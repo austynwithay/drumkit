@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Manual Drum Sequencer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background-color: #89c787;
+            /* Pastel purple background color */
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            padding: 20px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 10px;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 60px repeat(16, 1fr);
+            grid-gap: 2px;
+            margin-top: 20px;
+        }
+
+        .cell {
+            width: 30px;
+            height: 30px;
+            border: 1px solid gray;
+            cursor: pointer;
+            background-color: lightgray;
+        }
+
+        .cell.active {
+            background-color: darkgray;
+        }
+
+        .label {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding-left: 6px;
+            padding-bottom: 2px;
+            background-color: unset;
+            border: unset;
+            /* Pastel green complementary color */
+            color: rgb(0, 0, 0);
+            font-weight: bold;
+            text-transform: capitalize;
+        }
+
+
+        .piano-roll {
+            display: grid;
+            grid-template-columns: repeat(16, 1fr);
+            grid-gap: 2px;
+            margin-top: 20px;
+        }
+
+        .note-cell {
+            width: 30px;
+            height: 30px;
+            border: 1px solid gray;
+            cursor: pointer;
+            background-color: lightgray;
+        }
+
+        .note-cell.active {
+            background-color: #66cc99;
+            /* Pastel green complementary color */
+        }
+
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #333;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 5px;
+            margin: 0 5px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Manual Drum Sequencer</h1>
+
+        <div class="controls">
+            BPM: <input type="number" id="bpmInput" value="120" min="1">
+            <button onclick="startSequencer()">Start</button>
+            <button onclick="stopSequencer()">Stop</button>
+        </div>
+
+        <div class="grid" id="sequencerGrid"></div>
+        <div class="piano-roll" id="pianoRoll"></div>
+    </div>
+
+    <script>
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const sounds = {
+            kick: 'sounds/kick.ogg',
+            snare: 'sounds/snare.ogg',
+            openhat: 'sounds/openhat.ogg',
+            rhodes1: 'sounds/rhodes1.ogg',
+            rhodes2: 'sounds/rhodes2.ogg',
+        };
+
+        const sequenceLength = 16;
+        const sequencerGrid = document.getElementById('sequencerGrid');
+        const pianoRoll = document.getElementById('pianoRoll');
+        const bpmInput = document.getElementById('bpmInput');
+        let isSequencerRunning = false;
+        let intervalId = null;
+        let intervalMs = 60000 / parseInt(bpmInput.value, 10); // Initial interval in milliseconds
+
+        const sequence = {
+            kick: new Array(sequenceLength).fill(0),
+            snare: new Array(sequenceLength).fill(0),
+            openhat: new Array(sequenceLength).fill(0),
+            rhodes1: new Array(sequenceLength).fill(0),
+            rhodes2: new Array(sequenceLength).fill(0),
+        };
+
+        const pianoNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const pianoOctave = 4;
+
+        function loadSound(soundPath) {
+            return fetch(soundPath)
+                .then(response => response.arrayBuffer())
+                .then(buffer => audioContext.decodeAudioData(buffer));
+        }
+
+        async function loadSounds() {
+            for (const soundName in sounds) {
+                const soundPath = sounds[soundName];
+                sounds[soundName] = await loadSound(soundPath);
+            }
+        }
+
+        function playSound(soundBuffer) {
+            const source = audioContext.createBufferSource();
+            source.buffer = soundBuffer;
+            source.connect(audioContext.destination);
+            source.start();
+        }
+
+        function toggleNote(sound, step) {
+            sequence[sound][step] = sequence[sound][step] === 0 ? 1 : 0;
+            updateGrid();
+            updatePianoRoll();
+        }
+
+        function updateGrid() {
+            sequencerGrid.innerHTML = '';
+
+            // Add labels for each drum sound
+            const labelsRow = document.createElement('div');
+            labelsRow.className = 'grid-row';
+            labelsRow.appendChild(document.createElement('div')); // Empty cell for the first column
+
+            for (const sound in sequence) {
+                const labelCell = document.createElement('div');
+                labelCell.className = 'cell label';
+                labelCell.textContent = sound.charAt(0).toUpperCase() + sound.slice(1); // Capitalize the label
+                labelsRow.appendChild(labelCell);
+            }
+
+            sequencerGrid.appendChild(labelsRow);
+
+            for (let step = 0; step < sequenceLength; step++) {
+                const row = document.createElement('div');
+                row.className = 'grid-row';
+
+                for (const sound in sequence) {
+                    const cell = document.createElement('div');
+                    cell.className = `cell ${sequence[sound][step] ? 'active' : ''}`;
+                    cell.addEventListener('click', () => toggleNote(sound, step));
+                    row.appendChild(cell);
+                }
+
+                sequencerGrid.appendChild(row);
+            }
+        }
+
+        function updatePianoRoll() {
+            for (let i = 0; i < pianoNotes.length; i++) {
+                const note = pianoNotes[i];
+                const noteRow = pianoRoll.children[i];
+
+                for (let step = 0; step < sequenceLength; step++) {
+                    const noteCell = noteRow.children[step];
+                    noteCell.className = `note-cell ${sequence[note][step] ? 'active' : ''}`;
+                }
+            }
+        }
+
+        function startSequencer() {
+            if (isSequencerRunning) {
+                return;
+            }
+
+            isSequencerRunning = true;
+            intervalMs = 60000 / parseInt(bpmInput.value, 10); // Update interval based on BPM
+            let step = 0;
+
+            intervalId = setInterval(() => {
+                for (const sound in sequence) {
+                    if (sequence[sound][step] === 1) {
+                        playSound(sounds[sound]);
+                    }
+                }
+
+                step = (step + 1) % sequenceLength;
+            }, intervalMs);
+        }
+
+        function stopSequencer() {
+            if (!isSequencerRunning) {
+                return;
+            }
+
+            isSequencerRunning = false;
+            clearInterval(intervalId);
+        }
+
+        loadSounds();
+        updateGrid();
+
+        function updateInterval() {
+            intervalMs = 60000 / parseInt(bpmInput.value, 10);
+            if (isSequencerRunning) {
+                clearInterval(intervalId);
+                startSequencer();
+            }
+        }
+
+        bpmInput.addEventListener('input', updateInterval);
+    </script>
+</body>
+
+</html>
